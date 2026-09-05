@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyString — custom C++ string class</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <p class="brand">MyString</p>
+    <a class="github-link" href="https://github.com/maverick-4281/MyString">GitHub</a>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <h1 id="hero-title">See what happens inside a C++ String.</h1>
+      <p class="lede">MyString is a custom String class built from scratch to understand memory management, copying, destruction and operator overloading.</p>
+      <p class="note">The C++ object below is created by the real <code>MyString</code> constructor in WebAssembly. The address is a <strong>simulated address</strong> for the diagram, not a physical RAM address.</p>
+
+      <pre class="code-line">MyString a("Hello");</pre>
+
+      <div class="hero-diagram" id="hero-diagram">
+        <div class="object-tree">
+          <p class="obj-name">a</p>
+          <p class="tree-line">│</p>
+          <p class="tree-line">├── str ─────► <span id="hero-bytes" class="byte-row"></span></p>
+          <p class="tree-line">│</p>
+          <p class="tree-line">└── len = <span id="hero-len">5</span></p>
+        </div>
+        <dl class="meta-list">
+          <div><dt>Simulated address</dt><dd>0x04A2F0</dd></div>
+          <div><dt>Allocated bytes</dt><dd>6</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section aria-labelledby="store-title">
+      <h2 id="store-title">How MyString stores data</h2>
+      <p>The class has two private data members: <code>char* str</code> and <code>int len</code>. There is no <code>std::string</code> inside.</p>
+
+      <div class="split">
+        <pre class="source-block"><code>class MyString {
+private:
+    char* str;
+    int len;
+    ...
+};</code></pre>
+        <figure class="viz">
+          <figcaption>MyString object</figcaption>
+          <p><span class="field">str</span> ──► <span class="byte-row static">
+            <span class="byte live">H</span><span class="byte live">e</span><span class="byte live">l</span><span class="byte live">l</span><span class="byte live">o</span><span class="byte live term">\0</span>
+          </span></p>
+          <p><span class="field">len</span> = 5</p>
+        </figure>
+      </div>
+
+      <ul class="explain-list">
+        <li><code>str</code> points to dynamically allocated character memory (<code>new char[len + 1]</code>).</li>
+        <li><code>len</code> stores the string length, not counting the terminator.</li>
+        <li><code>'\0'</code> terminates the character array so stream output can stop at the end.</li>
+        <li>That buffer lives on the heap until the destructor calls <code>delete[] str</code>.</li>
+      </ul>
+    </section>
+
+    <section aria-labelledby="rule-title">
+      <h2 id="rule-title">Rule of Three</h2>
+      <p>Because MyString owns a heap buffer, it must define a copy constructor, copy assignment operator, and destructor. Otherwise copies would share one pointer and <code>delete[]</code> would run twice.</p>
+
+      <article class="step">
+        <h3>1. Copy constructor</h3>
+        <pre class="code-line">MyString a("Hello");
+MyString b = a;</pre>
+        <div class="split">
+          <pre class="source-block"><code>MyString::MyString(const MyString&amp; other) {
+    len = other.len;
+    str = new char[len + 1];
+    for (int i = 0; i &lt; len; i++) {
+        str[i] = other.str[i];
+    }
+    str[len] = '\0';
+}</code></pre>
+          <figure class="viz">
+            <p>a ──► <span class="byte-row static"><span class="byte live">H</span><span class="byte live">e</span><span class="byte live">l</span><span class="byte live">l</span><span class="byte live">o</span><span class="byte live term">\0</span></span></p>
+            <p>b ──► <span class="byte-row static"><span class="byte live">H</span><span class="byte live">e</span><span class="byte live">l</span><span class="byte live">l</span><span class="byte live">o</span><span class="byte live term">\0</span></span></p>
+            <p class="caption">The content is copied, but the memory is independently owned.</p>
+          </figure>
+        </div>
+      </article>
+
+      <article class="step">
+        <h3>2. Copy assignment</h3>
+        <pre class="code-line">MyString a("Hello");
+MyString b("World");
+b = a;</pre>
+        <div class="split">
+          <pre class="source-block"><code>MyString&amp; MyString::operator=(const MyString&amp; other) {
+    if (this == &amp;other) {
+        return *this;
+    }
+    char* newStr = new char[other.len + 1];
+    for (int i = 0; i &lt; other.len; i++) {
+        newStr[i] = other.str[i];
+    }
+    newStr[other.len] = '\0';
+    delete[] str;
+    str = newStr;
+    len = other.len;
+    return *this;
+}</code></pre>
+          <figure class="viz">
+            <p>Old B buffer (then <code>delete[]</code>)</p>
+            <p class="freed-row">╳ <span class="byte-row static"><span class="byte freed">W</span><span class="byte freed">o</span><span class="byte freed">r</span><span class="byte freed">l</span><span class="byte freed">d</span><span class="byte freed term">\0</span></span></p>
+            <p>B after assignment</p>
+            <p>B ──► <span class="byte-row static"><span class="byte live">H</span><span class="byte live">e</span><span class="byte live">l</span><span class="byte live">l</span><span class="byte live">o</span><span class="byte live term">\0</span></span></p>
+            <p class="caption">Self-assignment is guarded with <code>if (this == &amp;other)</code> so <code>a = a</code> does not free the live buffer first.</p>
+          </figure>
+        </div>
+      </article>
+
+      <article class="step">
+        <h3>3. Destructor</h3>
+        <div class="split">
+          <pre class="source-block"><code>MyString::~MyString() {
+    delete[] str;
+}</code></pre>
+          <figure class="viz">
+            <p>object ──► owned buffer ──► <code>delete[]</code></p>
+            <p class="freed-row">╳ <span class="byte-row static"><span class="byte freed">H</span><span class="byte freed">e</span><span class="byte freed">l</span><span class="byte freed">l</span><span class="byte freed">o</span><span class="byte freed term">\0</span></span></p>
+            <p class="caption">The destructor is necessary because the constructor allocated with <code>new[]</code>. Without <code>delete[]</code>, every MyString would leak its buffer.</p>
+          </figure>
+        </div>
+      </article>
+    </section>
+
+    <section aria-labelledby="play-title">
+      <h2 id="play-title">Interactive playground</h2>
+      <p>Buttons call the compiled C++ class through WebAssembly. The diagrams are an educational model of ownership and the <code>'\0'</code> terminator. Addresses are simulated.</p>
+      <p id="wasm-status" class="status" role="status">Loading WebAssembly…</p>
+
+      <form class="play-form" id="play-form" onsubmit="return false;">
+        <div class="fields">
+          <label>String A
+            <input id="input-a" type="text" value="Hello" maxlength="24" autocomplete="off" spellcheck="false">
+          </label>
+          <label>String B
+            <input id="input-b" type="text" value="World" maxlength="24" autocomplete="off" spellcheck="false">
+          </label>
+          <label>Index for A[i]
+            <input id="input-index" type="number" value="1" min="0" step="1">
+          </label>
+          <label>New C[0] character
+            <input id="input-mut" type="text" value="Y" maxlength="1" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+        <div class="actions" role="group" aria-label="MyString operations">
+          <button type="button" id="btn-concat">Concatenate (A + B)</button>
+          <button type="button" id="btn-compare">Compare (A == B)</button>
+          <button type="button" id="btn-copy">Copy A to C</button>
+          <button type="button" id="btn-mutate">Mutate C[0]</button>
+          <button type="button" id="btn-assign">Assign B = A</button>
+          <button type="button" id="btn-self">Self-assign A = A</button>
+          <button type="button" id="btn-length">Length</button>
+          <button type="button" id="btn-index">Access A[i]</button>
+        </div>
+      </form>
+
+      <p id="play-result" class="result" aria-live="polite"></p>
+
+      <div class="play-grid">
+        <div class="play-source-col">
+          <h3>Actual C++ source</h3>
+          <pre class="source-block" id="play-source"><code>Construct A and B, then choose an operation.</code></pre>
+        </div>
+        <div class="play-viz-col">
+          <h3>Memory visualization</h3>
+          <div id="play-viz" class="viz playground-viz"></div>
+        </div>
+        <p id="play-explain" class="caption play-explain"></p>
+      </div>
+    </section>
+
+    <section aria-labelledby="ops-title">
+      <h2 id="ops-title">Operator explorer</h2>
+      <p>These are the operations the assignment requires. Each example runs the same WebAssembly module.</p>
+
+      <article class="op-card">
+        <h3><code>operator+</code></h3>
+        <p>Allocates a new buffer of length <code>len + other.len + 1</code>, copies both sides, then constructs a result MyString.</p>
+        <pre class="code-line">MyString c = a + b;</pre>
+        <pre class="source-block"><code>MyString MyString::operator+(const MyString&amp; other) {
+    int newLen = len + other.len;
+    char* buffer = new char[newLen + 1];
+    for (int i = 0; i &lt; len; i++) {
+        buffer[i] = str[i];
+    }
+    for (int i = 0; i &lt; other.len; i++) {
+        buffer[len + i] = other.str[i];
+    }
+    buffer[newLen] = '\0';
+    MyString result(buffer);
+    delete[] buffer;
+    return result;
+}</code></pre>
+      </article>
+
+      <article class="op-card">
+        <h3><code>operator==</code></h3>
+        <p>Compares lengths first, then each character. Returns <code>true</code> only when both buffers match.</p>
+        <pre class="code-line">bool same = (a == b);</pre>
+        <pre class="source-block"><code>bool MyString::operator==(const MyString&amp; other) {
+    if (len != other.len) {
+        return false;
+    }
+    for (int i = 0; i &lt; len; i++) {
+        if (str[i] != other.str[i]) {
+            return false;
+        }
+    }
+    return true;
+}</code></pre>
+      </article>
+
+      <article class="op-card">
+        <h3><code>operator[]</code></h3>
+        <p>Returns a <code>char&amp;</code>, so <code>c[0] = 'Y'</code> writes into that object’s own buffer.</p>
+        <pre class="code-line">char ch = a[1];
+c[0] = 'Y';</pre>
+        <pre class="source-block"><code>char&amp; MyString::operator[](int index) {
+    return str[index];
+}</code></pre>
+        <p class="caption">The original implementation does not bounds-check. This page validates the index in JavaScript before calling C++.</p>
+      </article>
+
+      <article class="op-card">
+        <h3><code>operator&lt;&lt;</code> and <code>operator&gt;&gt;</code></h3>
+        <p>Output writes <code>s.str</code> to a stream. Input reads a whitespace-delimited word into a stack buffer, frees the old heap buffer, and allocates a new one. That is the real <code>cin &gt;&gt; a</code> / <code>cout &lt;&lt; a</code> behavior, using <code>istringstream</code> / <code>ostringstream</code> in the browser.</p>
+        <div class="stream-demo">
+          <label>Input for <code>&gt;&gt;</code>
+            <input id="stream-in" type="text" value="Custom" maxlength="24" autocomplete="off" spellcheck="false">
+          </label>
+          <button type="button" id="btn-stream-in">Read with &gt;&gt;</button>
+          <button type="button" id="btn-stream-out">Write with &lt;&lt;</button>
+        </div>
+        <p id="stream-result" class="result" aria-live="polite"></p>
+        <pre class="source-block"><code>std::ostream&amp; operator&lt;&lt;(std::ostream&amp; out, const MyString&amp; s) {
+    out &lt;&lt; s.str;
+    return out;
+}
+
+std::istream&amp; operator&gt;&gt;(std::istream&amp; in, MyString&amp; s) {
+    char buffer[1000];
+    in &gt;&gt; buffer;
+    delete[] s.str;
+    s.len = s.getLen(buffer);
+    s.str = new char[s.len + 1];
+    for (int i = 0; i &lt; s.len; i++) {
+        s.str[i] = buffer[i];
+    }
+    s.str[s.len] = '\0';
+    return in;
+}</code></pre>
+      </article>
+
+      <article class="op-card">
+        <h3><code>length()</code></h3>
+        <p>Returns the stored <code>len</code> member. It does not walk the buffer each time.</p>
+        <pre class="code-line">int n = a.length();</pre>
+        <pre class="source-block"><code>int MyString::length() {
+    return len;
+}</code></pre>
+      </article>
+    </section>
+
+    <section aria-labelledby="verify-title">
+      <h2 id="verify-title">Verification</h2>
+      <h3>Verified, not assumed</h3>
+      <p>Only checks that actually ran in this environment are listed as passed.</p>
+      <ul class="verify-list">
+        <li><strong>Passed.</strong> <code>g++ -Wall -Wextra</code> compiled <code>cpp/MyString.cpp</code> and <code>cpp/verify.cpp</code> with no reported warnings (MSYS2 g++ 13.2.0). The program printed expected results for concatenate, compare, copy, mutate, assign, self-assignment, streams, length, and <code>operator[]</code>.</li>
+        <li><strong>Not verified in this environment.</strong> AddressSanitizer: the linker could not find <code>-lasan</code>.</li>
+        <li><strong>Not verified in this environment.</strong> UndefinedBehaviorSanitizer: the linker could not find <code>-lubsan</code>.</li>
+        <li><strong>Passed.</strong> Self-assignment <code>a = a</code> kept the object valid (<code>Hello</code>, length 5) in the native verify program.</li>
+        <li><strong>Passed.</strong> Emscripten 6.0.9 compiled the same MyString sources plus <code>bindings.cpp</code>. A Node spike created a real <code>MyString("Hello")</code>, read the value through <code>operator&lt;&lt;</code>, and reported length 5.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>MyString — a custom C++ String class with its own memory management. Visualization is a logical model; execution is WebAssembly.</p>
+    <a href="https://github.com/maverick-4281/MyString">GitHub</a>
+  </footer>
+
+  <script src="wasm/mystring.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
